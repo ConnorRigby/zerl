@@ -37,8 +37,14 @@ pub fn build(b: *std.build.Builder) void {
     run_step.dependOn(&run_cmd.step);
 
     const exe_tests = b.addTest("src/main.zig");
+    exe_tests.addIncludePath(erl_include_dir);
+    exe_tests.addIncludePath(erts_include_dir);
+    exe_tests.addLibraryPath(erl_lib_dir);
+    exe_tests.linkSystemLibrary("ei");
+    exe_tests.linkSystemLibrary("ei_st");
     exe_tests.setTarget(target);
     exe_tests.setBuildMode(mode);
+    exe_tests.linkLibC();
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&exe_tests.step);
