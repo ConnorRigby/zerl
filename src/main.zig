@@ -19,6 +19,7 @@ pub fn main() !void {
 
     try node.listen();
     std.log.info("Node up {s} at {?d}", .{ node.nodename, node.port});
+    try node.register_process();
 
     std.log.info("Awaiting connection", .{});
     while (true) node_accepted: {
@@ -65,8 +66,8 @@ pub fn main() !void {
             defer msg.deinit();
 
             // handle the received message
-            std.log.info("Received message: {}", .{msg});
-            node.handle_message(&conn, &msg);
+            // std.log.info("Received message: {}", .{msg});
+            try node.handle_message(&conn, &msg);
         }
     }
 }

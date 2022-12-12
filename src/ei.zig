@@ -115,24 +115,31 @@ pub const Term = struct {
     arity: i32,
     size: i32,
 
-    pub fn decode(allocator: std.mem.Allocator, x: *const c.ei_x_buff, index: *c_int) DecodeError!Term {
+    pub fn decode(allocator: std.mem.Allocator, x: *c.ei_x_buff) DecodeError!Term {
         var term: c.ei_term = std.mem.zeroes(c.ei_term);
-        const t = c.ei_decode_ei_term(x.buff, index, &term);
+        print_top(x);
+        const t = c.ei_decode_ei_term(x.buff, &x.index, &term);
         if (t == -1) return ErlError.ei_decode_ei_term;
-        const value = try decode_value(allocator, x, &term, index);
+        const value = try decode_value(allocator, x, &term);
         return .{ .allocator = allocator, .term_type = @intToEnum(TermType, term.ei_type), .arity = @intCast(i32, term.arity), .size = @intCast(i32, term.size), .value = value };
     }
 
-    pub fn decode2(allocator: std.mem.Allocator, x: *const c.ei_x_buff, index: *c_int) DecodeError!TermValue {
-        std.debug.print("index={d}\n", .{index.*});
+    pub fn decode2(allocator: std.mem.Allocator, x: *c.ei_x_buff) DecodeError!TermValue {
         var term: c.ei_term = std.mem.zeroes(c.ei_term);
-        const t = c.ei_decode_ei_term(x.buff, index, &term);
+        const t = c.ei_decode_ei_term(x.buff, &x.index, &term);
         if (t == -1) return ErlError.ei_decode_ei_term;
-        return decode_value(allocator, x, &term, index);
+        return decode_value(allocator, x, &term);
     }
 
-    fn decode_value(allocator: std.mem.Allocator, x: *const c.ei_x_buff, term: *c.ei_term, index: *c_int) !TermValue {
-        std.debug.print("type={s} size={d} arity={d}\n", .{@tagName(@intToEnum(TermType, term.ei_type)), term.size, term.arity});
+    fn print_top(x: *c.ei_x_buff) void {
+        var t: c_int = 0;
+        var size: c_int = 0;
+        _ = c.ei_get_type(x.buff, &x.index, &t, &size);
+        std.debug.print("==== decode type={s} size/arity={d} ====\n", .{@tagName(@intToEnum(TermType, t)), size});
+    }
+
+    fn decode_value(allocator: std.mem.Allocator, x: *c.ei_x_buff, term: *c.ei_term) !TermValue {
+        std.debug.print("decode type={s} size={d} arity={d}\n", .{@tagName(@intToEnum(TermType, term.ei_type)), term.size, term.arity});
         switch (@intToEnum(TermType, term.ei_type)) {
             .SmallInteger, .Integer => return TermValue{ .integer = @intCast(isize, term.value.i_val) },
             .SmallBig, .LargeBig, .Float => return TermValue{ .double = term.value.d_val },
@@ -151,14 +158,14 @@ pub const Term = struct {
                 errdefer allocator.free(binary);
                 var len: c_long = 0;
                 if(t == .Binary) {
-                    const b = c.ei_decode_binary(x.buff, index, binary.ptr, &len);
+                    const b = c.ei_decode_binary(x.buff, &x.index, binary.ptr, &len);
                     if (b == -1) return ErlError.ei_decode_ei_term;
                     if (len != term.size) {
                         std.debug.print("length doesnt match {d},{d}\n", .{ len, term.size });
                     }
                     return TermValue{ .binary = binary };
                 } else if(t == .String) {
-                    const b = c.ei_decode_string(x.buff, index, binary.ptr);
+                    const b = c.ei_decode_string(x.buff, &x.index, binary.ptr);
                     if (b == -1) return ErlError.ei_decode_ei_term;
                     return TermValue{ .string = binary };
                 } else {unreachable;}
@@ -169,7 +176,7 @@ pub const Term = struct {
 
                 var i: usize = 0;
                 while(i < term.arity):(i = i+1) {
-                    tuple[i] = try decode2(allocator, x, index);
+                    tuple[i] = try decode2(allocator, x);
                 }
 
                 return TermValue{ .tuple = tuple };
@@ -179,22 +186,25 @@ pub const Term = struct {
                 errdefer map.deinit();
                 var i: usize = 0;
                 while(i < term.arity):(i = i + 1)  {
-                    var key = try decode2(allocator, x, index);
-                    var value = try decode2(allocator, x, index);
+                    var key = try decode2(allocator, x);
+                    var value = try decode2(allocator, x);
                     try map.put(key, value);
                 }
                 return TermValue{.map = map};
             },
+            // Decodes a list header from the binary format. 
+            // The number of elements is returned in arity. 
+            // The arity+1 elements follow (the last one is the tail of the list, normally an empty list). 
+            // If arity is 0, it is an empty list.
             .List => {
                 // could likely be a standard allocator.alloc(TermValue, term.size)
                 // but this gives an easy way to append to the list 
                 // for term construction
-                var list = try std.ArrayList(TermValue).initCapacity(allocator, @intCast(usize, term.arity));
+                var list = try std.ArrayList(TermValue).initCapacity(allocator, @intCast(usize, term.arity+1));
                 errdefer list.deinit();
-
                 var i: usize = 0;
-                while(i < term.arity):(i = i + 1) {
-                    var item = try decode2(allocator, x, index);
+                while(i < term.arity+1):(i = i + 1) {
+                    var item = try decode2(allocator, x);
                     try list.append(item);
                 }
                 return TermValue{.list = list};
@@ -203,11 +213,11 @@ pub const Term = struct {
         }
     }
 
-    pub fn init(allocator: std.mem.Allocator, x: *const c.ei_x_buff) !Term {
-        var index: c_int = 0;
+    pub fn init(allocator: std.mem.Allocator, x: *c.ei_x_buff) !Term {
         var version: c_int = 0;
-        if (c.ei_decode_version(x.buff, &index, &version) == -1) return ErlError.ei_decode_version;
-        return decode(allocator, x, &index);
+        std.debug.print("index={d}\n", .{x.index});
+        if (c.ei_decode_version(x.buff, &x.index, &version) == -1) return ErlError.ei_decode_version;
+        return decode(allocator, x);
     }
 
     pub fn deinit(self: *Term) void {
@@ -249,6 +259,9 @@ pub const Term = struct {
     }
 };
 
+
+// TODO: this should be in it's own file
+
 pub const MessageType = enum(c_int) { 
     Link = c.ERL_LINK, 
     Send = c.ERL_SEND, 
@@ -263,11 +276,15 @@ pub const MessageType = enum(c_int) {
 
 pub const Message = struct {
     message_type: MessageType,
-    from: c.erlang_pid,
-    to: c.erlang_pid,
     toname: []const u8,
     msg: c.erlang_msg,
     pub fn init(msg: c.erlang_msg) !Message {
-        return .{ .message_type = @intToEnum(MessageType, msg.msgtype), .from = msg.from, .to = msg.to, .toname = std.mem.span(&msg.toname), .msg = msg };
+        const toname_len = std.mem.indexOfSentinel(u8, 0, @ptrCast([*:0]const u8, &msg.toname));
+
+        return .{ 
+            .message_type = @intToEnum(MessageType, msg.msgtype), 
+            .toname = msg.toname[0..toname_len], 
+            .msg = msg
+        };
     }
 };

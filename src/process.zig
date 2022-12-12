@@ -1,30 +1,24 @@
 const std = @import("std");
 
-pub fn Process(comptime T: type) type {
-  return struct {
-    pub fn init() T {
-      return .{};
-    }
+const c = @import("c.zig");
+
+const TermValue = @import("ei.zig").TermValue;
+const ErlConnect = @import("erl_connect.zig").ErlConnect;
+  
+pub const Process = struct {
+  pub const Interface = struct {
+    ptr: *anyopaque,
+    receiveFn: *const fn(*anyopaque, *ErlConnect, *c.erlang_pid, *TermValue) void,
   };
-}
 
-// pub const process = struct {
-//   allocator: std.mem.Allocator,
+  impl: Interface,
+  // pid: c.erlang_pid,
 
-//   pub const init(allocator: std.mem.Allocator) !Process {
+  pub fn init(interface: Interface) Process {
+    return .{.impl = interface};
+  }
 
-//     return .{.allocator = allocator};
-//   }
-// };
-
-// HashMap implementation
-pub const Context = struct {
-    pub fn hash(context: Context, key: []const u8) u64 {
-        _ = context; _ = key;
-        @panic("not implemented");
-    }
-    pub fn eql(context: Context, a: []const u8, b: []const u8) bool {
-        _ = context; _ = a; _ = b;
-        @panic("not implemented");
-    }
+  pub fn receive(self: *const Process, conn: *ErlConnect, from: *c.erlang_pid, message: *TermValue) void {
+    self.impl.receiveFn(self.impl.ptr, conn, from, message);
+  }
 };

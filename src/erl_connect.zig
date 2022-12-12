@@ -10,7 +10,7 @@ pub const Receive = struct {
     message: EI.Message,
     term: EI.Term,
 
-    pub fn init(allocator: std.mem.Allocator, emsg: c.erlang_msg, x: *const c.ei_x_buff) !Receive {
+    pub fn init(allocator: std.mem.Allocator, emsg: c.erlang_msg, x: *c.ei_x_buff) !Receive {
         return .{ .message = try EI.Message.init(emsg), .term = try EI.Term.init(allocator, x) };
     }
 
@@ -37,7 +37,7 @@ pub const ErlConnect = struct {
         std.mem.copy(u8, nodename, nodename_);
 
         // buffer for storing terms
-        var x: c.ei_x_buff = undefined;
+        var x = std.mem.zeroes(c.ei_x_buff);
         errdefer {_ = c.ei_x_free(&x);}
 
         // initialize the buffer before receiving
@@ -55,8 +55,7 @@ pub const ErlConnect = struct {
 
     pub fn receive(self: *ErlConnect, timeout: usize) !Receive {
         // control message
-        var emsg: c.erlang_msg = undefined;
-        std.mem.set(u8, &emsg.toname, 0);
+        var emsg: c.erlang_msg = std.mem.zeroes(c.erlang_msg);
 
         switch (c.ei_xreceive_msg_tmo(self.fd, &emsg, &self.x, @intCast(c_uint, timeout))) {
             c.ERL_TICK => return ErlError.TICK,
@@ -69,27 +68,9 @@ pub const ErlConnect = struct {
             },
             else => {
                 // handles receiving the entire term payload
+                self.x.index = 0; // ????
                 return Receive.init(self.allocator, emsg, &self.x);
             },
         }
     }
-
-    // pub fn reg_send(self: *ErlConnect, server: []const u8) void {
-    //     var self_pid: *c.erlang_pid = c.ei_self(&self.ec);
-
-    //     var buf: c.ei_x_buff = undefined;
-    //     _ = c.ei_x_new_with_version(&buf);
-
-    //     _ = c.ei_x_encode_tuple_header(&buf, 2);
-    //     _ = c.ei_x_encode_pid(&buf, self_pid);
-    //     _ = c.ei_x_encode_atom(&buf, "Hello world");
-
-    //     const name_ = "console";
-    //     var name: []u8 = try self.allocator.allocSentinel(u8, name_.len + 1, 0);
-    //     defer self.allocator.free(name);
-    //     std.mem.set(u8, name, 0);
-    //     std.mem.copy(u8, name, name_);
-
-    //     _ = c.ei_reg_send(&self.ec, accept_fd, name.ptr, buf.buff, buf.index);
-    // }
 };
