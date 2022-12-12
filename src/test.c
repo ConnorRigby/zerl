@@ -119,12 +119,13 @@ int main(int argc, char **argv) {
     // res = erl_errno != ETIMEDOUT;
     break;
   default:
-    fprintf(stderr, "got message\n");
-    if (emsg.msgtype == ERL_REG_SEND) {
+    fprintf(stderr, "got message %ld\n", emsg.msgtype);
+    if (emsg.msgtype == ERL_SEND) {
       // env->reply_to = &emsg.from;
       int index = 0;
       int version;
       ei_decode_version(in_buff.buff, &index, &version);
+      fprintf(stderr, "message verrsion=%d\n", version);
 
       int arity;
       ei_decode_tuple_header(in_buff.buff, &index, &arity);

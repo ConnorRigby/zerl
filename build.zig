@@ -22,7 +22,7 @@ pub fn build(b: *std.build.Builder) void {
     exe.addIncludePath(erl_include_dir);
     exe.addIncludePath(erts_include_dir);
     exe.addLibraryPath(erl_lib_dir);
-    exe.linkSystemLibrary("ei");
+    // exe.linkSystemLibrary("ei");
     exe.linkSystemLibrary("ei_st");
     exe.linkLibC();
     exe.install();
@@ -40,7 +40,7 @@ pub fn build(b: *std.build.Builder) void {
     exe_tests.addIncludePath(erl_include_dir);
     exe_tests.addIncludePath(erts_include_dir);
     exe_tests.addLibraryPath(erl_lib_dir);
-    exe_tests.linkSystemLibrary("ei");
+    // exe_tests.linkSystemLibrary("ei");
     exe_tests.linkSystemLibrary("ei_st");
     exe_tests.setTarget(target);
     exe_tests.setBuildMode(mode);
