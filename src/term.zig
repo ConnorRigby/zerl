@@ -5,9 +5,9 @@ const c = @import("c.zig");
 
 pub const TermType = enum(c_int) { Atom = c.ERL_ATOM_EXT, Binary = c.ERL_BINARY_EXT, BitBinary = c.ERL_BIT_BINARY_EXT, Float = c.ERL_FLOAT_EXT, NewFun = c.ERL_NEW_FUN_EXT, Fun = c.ERL_FUN_EXT, ExPort = c.ERL_EXPORT_EXT, SmallInteger = c.ERL_SMALL_INTEGER_EXT, Integer = c.ERL_INTEGER_EXT, SmallBig = c.ERL_SMALL_BIG_EXT, LargeBig = c.ERL_LARGE_BIG_EXT, List = c.ERL_LIST_EXT, Nil = c.ERL_NIL_EXT, String = c.ERL_STRING_EXT, Map = c.ERL_MAP_EXT, Pid = c.ERL_PID_EXT, Port = c.ERL_PORT_EXT, NewReference = c.ERL_NEW_REFERENCE_EXT, SmallTuple = c.ERL_SMALL_TUPLE_EXT, LargeTuple = c.ERL_LARGE_TUPLE_EXT };
 
-pub const TermValueType = enum { integer, double, pid, port, ref, atom, binary, string, tuple, map, list };
+pub const TermValueType = enum { integer, double, long, pid, port, ref, atom, binary, string, tuple, map, list };
 
-pub const TermValue = union(TermValueType) { integer: isize, double: f64, pid: c.erlang_pid, port: c.erlang_port, ref: c.erlang_ref, atom: []const u8, binary: []const u8, string: []const u8, tuple: []TermValue, map: std.HashMap(TermValue, TermValue, TermContext, 80), list: std.ArrayList(TermValue) };
+pub const TermValue = union(TermValueType) { integer: isize, double: f64, long: i64, pid: c.erlang_pid, port: c.erlang_port, ref: c.erlang_ref, atom: []const u8, binary: []const u8, string: []const u8, tuple: []TermValue, map: std.HashMap(TermValue, TermValue, TermContext, 80), list: std.ArrayList(TermValue) };
 
 pub const Term = struct {
   pub const DecodeError = std.mem.Allocator.Error || ErlError;
@@ -32,7 +32,6 @@ pub const Term = struct {
   // the buffer should remain along with this term
   pub fn decode(allocator: std.mem.Allocator, x: *c.ei_x_buff) DecodeError!Term {
     var term: c.ei_term = std.mem.zeroes(c.ei_term);
-    print_top(x);
     const t = c.ei_decode_ei_term(x.buff, &x.index, &term);
     if (t == -1) return ErlError.ei_decode_ei_term;
     const value = try decode_value(allocator, x, &term);
@@ -49,6 +48,7 @@ pub const Term = struct {
     switch (value.*) {
       .integer => _ = c.ei_x_encode_long(x, value.integer),
       .double => _ = c.ei_x_encode_double(x, value.double),
+      .long => _ = c.ei_x_encode_long(x, value.long),
       .pid => _ = c.ei_x_encode_pid(x, &value.pid),
       .port => _ = c.ei_x_encode_port(x, &value.port),
       .ref => _ = c.ei_x_encode_ref(x, &value.ref),
@@ -91,17 +91,41 @@ pub const Term = struct {
   fn decode2(allocator: std.mem.Allocator, x: *c.ei_x_buff) DecodeError!TermValue {
     var term: c.ei_term = std.mem.zeroes(c.ei_term);
     const t = c.ei_decode_ei_term(x.buff, &x.index, &term);
-    if (t == -1) return ErlError.ei_decode_ei_term;
+    if (t == -1) return {
+      var t_: c_int = 0;
+      var size: c_int = 0;
+      _ = c.ei_get_type(x.buff, &x.index, &t_, &size);
+      // HACK: idk what the deal w/ bignum is
+      if(@intToEnum(TermType, t_) == .SmallBig) {
+        _ = c.ei_skip_term(x.buff, &x.index);
+        return TermValue{.long = 0};
+      }
+      return ErlError.ei_decode_ei_term;
+    };
     return decode_value(allocator, x, &term);
   }
 
   fn decode_value(allocator: std.mem.Allocator, x: *c.ei_x_buff, term: *c.ei_term) !TermValue {
-    std.debug.print("decode type={s} size={d} arity={d}\n", .{ @tagName(@intToEnum(TermType, term.ei_type)), term.size, term.arity });
+    // std.debug.print("decode type={s} size={d} arity={d}\n", .{ @tagName(@intToEnum(TermType, term.ei_type)), term.size, term.arity });
     switch (@intToEnum(TermType, term.ei_type)) {
       .SmallInteger, .Integer => return TermValue{ .integer = @intCast(isize, term.value.i_val) },
-      .SmallBig, .LargeBig, .Float => return TermValue{ .double = term.value.d_val },
+      .Float => return TermValue{ .double = term.value.d_val },
+      .SmallBig => { 
+        var value: c_long = 0;
+          _ = c.ei_decode_long(x.buff, &x.index, &value);
+          std.log.debug("long value = {d}\n", .{value});
+          return TermValue{.long = value};
+       },
       .Pid => return TermValue{ .pid = term.value.pid },
       .NewReference => return TermValue{ .ref = term.value.ref },
+      .Nil => {
+        const i_am_bad = "nil";
+        const atom = try allocator.alloc(u8, i_am_bad.len);
+        errdefer allocator.free(atom);
+        std.mem.set(u8, atom, 0);
+        std.mem.copy(u8, atom, i_am_bad);
+        return TermValue{ .atom = atom };
+      },
       .Atom => {
         const len = std.mem.indexOfSentinel(u8, 0, @ptrCast([*:0]u8, &term.value.atom_name));
         const atom = try allocator.alloc(u8, len);

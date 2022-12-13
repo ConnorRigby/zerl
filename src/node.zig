@@ -12,6 +12,7 @@ const GenServer = @import("gen_server.zig").GenServer;
 
 // GenServer implementations
 const NetKernel = @import("net_kernel.zig").NetKernel;
+const LoggerBackend = @import("logger_backend.zig").LoggerBackend;
 
 // Root level struct that handles a single
 // Erlang Distribution Node. You will most likely
@@ -90,6 +91,17 @@ pub const Node = struct {
     server.node = self;
 
     try self.processes.put("net_kernel", Process.init(.{ .ptr = server, .receiveFn = &GenServer.receive }));
+
+    var logger = try self.allocator.create(GenServer);
+    errdefer self.allocator.destroy(logger);
+
+    var logger_backend_impl = try self.allocator.create(LoggerBackend);
+    errdefer self.allocator.destroy(logger_backend_impl);
+
+    logger.impl = .{.ptr = logger_backend_impl, .handle_castFn = &LoggerBackend.handle_cast, .handle_callFn = &LoggerBackend.handle_call};
+    logger.node = self;
+
+    try self.processes.put("Elixir.Zerl.LoggerBackend", Process.init(.{ .ptr = logger, .receiveFn = &GenServer.receive }));
   }
 
   // Open a listen socket. Non blocking.
