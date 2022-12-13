@@ -1,5 +1,10 @@
-const std = @import("std.zig");
+const std = @import("std");
+
+const Node = @import("node.zig").Node;
+const ErlConnect = @import("erl_connect.zig").ErlConnect;
+const Term = @import("term.zig").Term;
 const TermValue = @import("term.zig").TermValue;
+const c = @import("c.zig");
 
 pub const GenServer = struct {
     pub const Impl = struct {
@@ -27,8 +32,14 @@ pub const GenServer = struct {
                             const tag = message.tuple[1].tuple[1].list;
 
                             const result = self.impl.handle_callFn(self.impl.ptr, &message.tuple[1], &message.tuple[2]);
-                            _ = c.ei_send(conn.fd, &from_pid, result_buff.buff, result_buff.index);
+                            var reply: TermValue = .{.tuple = &[_]TermValue { .{.list = tag }, result } };
 
+                            var x = std.mem.zeroes(c.ei_x_buff);
+                            defer {_ = c.ei_x_free(&x);}
+                            
+                            Term.encode(&reply, &x) catch {};
+
+                            _ = c.ei_send(conn.fd, &from_pid, x.buff, x.index);
                         } else {
                             std.debug.print("message: {s}\n", .{message.tuple[0].atom});
                             @panic("unexpected genserver message");

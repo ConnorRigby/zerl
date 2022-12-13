@@ -2,17 +2,21 @@ const std = @import("std");
 const c = @import("c.zig");
 
 const ErlError = @import("erl_error.zig").ErlError;
-const EI = @import("ei.zig");
+const Message = @import("message.zig").Message;
+const Term = @import("term.zig").Term;
 
 // structure containing a single control message
 // and term from another connection
 // TODO: move `term` into `Message`, and get rid of this struct
 pub const Receive = struct {
-    message: EI.Message,
-    term: EI.Term,
+    message: Message,
+    term: Term,
 
     pub fn init(allocator: std.mem.Allocator, emsg: c.erlang_msg, x: *c.ei_x_buff) !Receive {
-        return .{ .message = try EI.Message.init(emsg), .term = try EI.Term.init(allocator, x) };
+        return .{ 
+            .message = try Message.init(emsg), 
+            .term = try Term.init(allocator, x) 
+        };
     }
 
     pub fn deinit(self: *Receive) void {

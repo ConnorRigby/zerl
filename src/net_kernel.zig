@@ -1,3 +1,5 @@
+const std = @import("std");
+
 const TermValue = @import("term.zig").TermValue;
 
 pub const NetKernel = struct {

@@ -7,10 +7,11 @@ const _erl_connect = @import("erl_connect.zig");
 const ErlConnect = _erl_connect.ErlConnect;
 const ErlConnectReceive = _erl_connect.Receive;
 const Process = @import("process.zig").Process;
+const ProcessInterface = @import("process.zig").Interface;
 const GenServer = @import("gen_server.zig").GenServer;
 
 // GenServer implementations
-const NetKernel = @import("net_kernel.zig");
+const NetKernel = @import("net_kernel.zig").NetKernel;
 
 // Root level struct that handles a single
 // Erlang Distribution Node. You will most likely
@@ -70,27 +71,27 @@ pub const Node = struct {
         // TODO: this probably doesn't need to be copied anymore
         self.allocator.free(self.nodename);
 
-        //  Cleanup every process
-        var iter = self.processes.iterator();
-        while(iter.next()) |process| {
-            process.deinit();
-        }
+        //  TODO: Cleanup every process
+        // var iter = self.processes.iterator();
+        // while(iter.next()) |entry| {
+        //     entry.deinit();
+        // }
         self.processes.deinit();
     }
 
-    pub fn register_process(self: *Node, name: []const u8, interface: Process.Interface) !void {
-        try self.processes.put(name, Process.init(interface));
+    pub fn register_process(self: *Node) !void {
+        // try self.processes.put(name, Process.init(interface));
 
-        // var server = try self.allocator.create(GenServer);
-        // errdefer self.allocator.destroy(server);
+        var server = try self.allocator.create(GenServer);
+        errdefer self.allocator.destroy(server);
 
-        // var impl = try self.allocator.create(NetKernel);
-        // errdefer self.allocator.destroy(impl);
+        var impl = try self.allocator.create(NetKernel);
+        errdefer self.allocator.destroy(impl);
 
-        // server.impl = .{.ptr = impl, .handle_castFn = &NetKernel.handle_cast, .handle_callFn = &NetKernel.handle_call};
-        // server.node = self;
+        server.impl = .{.ptr = impl, .handle_castFn = &NetKernel.handle_cast, .handle_callFn = &NetKernel.handle_call};
+        server.node = self;
 
-        // try self.processes.put("net_kernel", Process.init(.{.ptr = server, .receiveFn = &GenServer.receive}));
+        try self.processes.put("net_kernel", Process.init(.{.ptr = server, .receiveFn = &GenServer.receive}));
     }
 
     // Open a listen socket. Non blocking. 
@@ -140,7 +141,7 @@ pub const Node = struct {
     // process an incoming message from another connection
     pub fn handle_message(self: *Node, conn: *ErlConnect, receive: *ErlConnectReceive) !void {
         switch(receive.message.message_type) {
-            .RegSend => try reg_send(self, conn, receive),
+            .RegSend => reg_send(self, conn, receive),
             else => |t| {
                 std.debug.print("unhandled message: {any}\n", .{t});
                 @panic("unhandled message");
@@ -149,7 +150,7 @@ pub const Node = struct {
     }
 
     // handle .RegSend
-    fn reg_send(self: *Node, conn: *ErlConnect, receive: *ErlConnectReceive) !void {
+    fn reg_send(self: *Node, conn: *ErlConnect, receive: *ErlConnectReceive) void {
         const name = receive.message.toname;
         if(self.processes.get(name)) | process | {
             process.receive(conn, &receive.message.msg.from, &receive.term.value);

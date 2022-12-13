@@ -1,4 +1,6 @@
-const std = @import("std.zig");
+const std = @import("std");
+
+const ErlError = @import("erl_error.zig").ErlError;
 const c = @import("c.zig");
 
 pub const TermType = enum(c_int) { 
@@ -53,7 +55,7 @@ pub const TermValue = union(TermValueType) {
 };
 
 pub const Term = struct {
-    pub const DecodeError = std.mem.Allocator.Error || ErlError,
+    pub const DecodeError = std.mem.Allocator.Error || ErlError;
 
     allocator: std.mem.Allocator,
     term_type: TermType,
@@ -82,15 +84,13 @@ pub const Term = struct {
       return .{ .allocator = allocator, .term_type = @intToEnum(TermType, term.ei_type), .arity = @intCast(i32, term.arity), .size = @intCast(i32, term.size), .value = value };
     }
 
-    pub fn encode(self: *Term) c.ei_x_buff {
-      var x = std.mem.zeroes(c.ei_x_buff);
-      errdefer {_ = c.ei_x_free(&x);}
-      encode2(&self.value, x);
-      return x;
+    pub fn encode(term: *const TermValue, x: *c.ei_x_buff) DecodeError!void {
+      _ = c.ei_x_encode_version(x);
+      encode2(term, x);
     }
 
     // recursive function that fills a buffer
-    fn encode2(value: *TermValue, x: *c.ei_x_buff) void {
+    fn encode2(value: *const TermValue, x: *c.ei_x_buff) void {
       switch(value.*) {
         .integer => _ = c.ei_x_encode_long(x, value.integer),
         .double => _ = c.ei_x_encode_double(x, value.double),
@@ -107,18 +107,20 @@ pub const Term = struct {
           }
         },
         .list => {
-          _ = c.ei_x_encode_list_header(x, @intCast(value.list.items.len) - 1);
-          for(value.list) |list_value| {
+          _ = c.ei_x_encode_list_header(x, @intCast(c_int, value.list.items.len) - 1);
+          for(value.list.items) |list_value| {
             encode2(&list_value, x);
           }
         },
         .map => {
           _ = c.ei_x_encode_map_header(x, @intCast(c_int, value.map.count()));
-          iter = value.map.keyIterator();
+          var iter = value.map.keyIterator();
           while(iter.next()) |key| {
-            var value = value.map.get(key);
+            // TODO: map.get(Term)
+            //               ^ pass by value!!!!!!!
+            var map_value = value.map.get(key.*).?;
             encode2(key, x);
-            encode2(value, x);
+            encode2(&map_value, x);
           }
         },
       }

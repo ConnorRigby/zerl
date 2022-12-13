@@ -1,4 +1,4 @@
-const std = @import("std.zig");
+const std = @import("std");
 const c = @import("c.zig");
 
 pub const MessageType = enum(c_int) { 
