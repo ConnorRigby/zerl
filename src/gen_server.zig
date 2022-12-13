@@ -1,84 +1,43 @@
-const std = @import("std");
+const std = @import("std.zig");
+const TermValue = @import("term.zig").TermValue;
 
-pub const message_t = u8;
-pub const from_t = u8;
-
-pub const reply_t = struct { from: ?from_t, data: ?message_t };
-
-pub const noreply: reply_t = .{ .from = null, .data = null };
-
-pub fn GenServer(comptime T: type) type {
-    if (!@hasDecl(T, "init")) @panic(@typeName(T) ++ " Does not define an init function");
-    if (!@hasDecl(T, "handle_info")) @panic(@typeName(T) ++ " Does not define an handle_info function");
-    if (!@hasDecl(T, "handle_call")) @panic(@typeName(T) ++ " Does not define an handle_call function");
-    if (!@hasDecl(T, "handle_cast")) @panic(@typeName(T) ++ " Does not define an handle_cast function");
-
-    return struct {
-        pub fn init() T {
-            return T.init();
-        }
-
-        pub fn terminate(state: *T, reason: anyerror) void {
-            state.terminate(reason);
-        }
-
-        pub fn call(state: *T, message: message_t, from: from_t) reply_t {
-            return state.handle_call(message, from);
-        }
-
-        pub fn cast(state: *T, message: message_t) void {
-            state.handle_cast(message);
-        }
-
-        pub fn info(state: *T, message: message_t) void {
-            state.handle_info(message);
-        }
+pub const GenServer = struct {
+    pub const Impl = struct {
+        ptr: *anyopaque,
+        handle_castFn: *const fn(*anyopaque, *const TermValue) void,
+        handle_callFn: *const fn(*anyopaque, *const TermValue, *const TermValue) TermValue,
     };
-}
+    node: *Node,
+    impl: Impl,
 
-const MyState = struct {
-    count: usize,
+    pub fn receive(ptr: *anyopaque, conn: *const ErlConnect, from: *c.erlang_pid, message: *const TermValue) void {
+        _ = from;
+        const self = @ptrCast(*GenServer, @alignCast(@alignOf(GenServer), ptr));
+        switch(message.*) {
+            .tuple => {
+                switch(message.tuple[0]) {
+                    .atom => {
+                        if(std.mem.eql(u8, "$gen_cast", message.tuple[0].atom)) {
+                            std.debug.assert(message.tuple.len == 2);
+                            self.impl.handle_castFn(self.impl.ptr, &message.tuple[1]);
+                        } else if(std.mem.eql(u8, "$gen_call", message.tuple[0].atom)) {
+                            std.debug.assert(message.tuple.len == 3);
+                            // TODO: sanity check the  gen server message structure 
+                            var from_pid = message.tuple[1].tuple[0].pid;
+                            const tag = message.tuple[1].tuple[1].list;
 
-    pub fn init() MyState {
-        return .{ .count = 0 };
-    }
+                            const result = self.impl.handle_callFn(self.impl.ptr, &message.tuple[1], &message.tuple[2]);
+                            _ = c.ei_send(conn.fd, &from_pid, result_buff.buff, result_buff.index);
 
-    pub fn handle_info(self: *MyState, msg: anytype) void {
-        _ = self;
-        _ = msg;
-    }
-
-    pub fn handle_cast(self: *MyState, msg: anytype) void {
-        _ = self;
-        _ = msg;
-    }
-
-    pub fn handle_call(self: *MyState, msg: message_t, from: from_t) reply_t {
-        self.count = msg;
-        return .{ .from = from, .data = msg };
-    }
-
-    pub fn terminate(self: *MyState, reason: anyerror) void {
-        _ = self;
-        std.debug.print("state terminate: {s}\n", .{@errorName(reason)});
+                        } else {
+                            std.debug.print("message: {s}\n", .{message.tuple[0].atom});
+                            @panic("unexpected genserver message");
+                        }
+                    },
+                    else =>  @panic("TODO: forward message to impl"),
+                }
+            },
+            else => @panic("TODO: forward message to impl"),
+        }
     }
 };
-
-const AllocationError = error{
-    OutOfMemory,
-};
-
-test "example" {
-    const my_server = GenServer(MyState);
-
-    var my_state = my_server.init();
-    defer my_server.terminate(&my_state, AllocationError.OutOfMemory);
-
-    var count = my_server.call(&my_state, 1, 2);
-    std.debug.print("{any} {?d}\n", .{ my_state, count.data });
-
-    count = my_server.call(&my_state, 2, 2);
-
-    // defer my_server.terminate();
-    std.debug.print("{any} {?d}\n", .{ my_state, count.data });
-}

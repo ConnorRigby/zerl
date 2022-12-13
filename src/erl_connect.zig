@@ -6,6 +6,7 @@ const EI = @import("ei.zig");
 
 // structure containing a single control message
 // and term from another connection
+// TODO: move `term` into `Message`, and get rid of this struct
 pub const Receive = struct {
     message: EI.Message,
     term: EI.Term,
