@@ -12,6 +12,6 @@ pub const NetKernel = struct {
         _ = ptr;
         _ = call;
         _ = from;
-        return .{.atom = "yes"};
+        return .{ .atom = "yes" };
     }
 };

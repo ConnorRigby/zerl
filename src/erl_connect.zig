@@ -13,10 +13,7 @@ pub const Receive = struct {
     term: Term,
 
     pub fn init(allocator: std.mem.Allocator, emsg: c.erlang_msg, x: *c.ei_x_buff) !Receive {
-        return .{ 
-            .message = try Message.init(emsg), 
-            .term = try Term.init(allocator, x) 
-        };
+        return .{ .message = try Message.init(emsg), .term = try Term.init(allocator, x) };
     }
 
     pub fn deinit(self: *Receive) void {
@@ -28,9 +25,9 @@ pub const Receive = struct {
 pub const ErlConnect = struct {
     allocator: std.mem.Allocator,
     conn: *c.ErlConnect, // connection as from the `accept` function
-    fd: c_int,           // socket that can be receive'd on
-    nodename: [:0]u8,    // current node's name
-    x: c.ei_x_buff,      // buffer for holding term value
+    fd: c_int, // socket that can be receive'd on
+    nodename: [:0]u8, // current node's name
+    x: c.ei_x_buff, // buffer for holding term value
 
     pub fn init(allocator: std.mem.Allocator, conn: *c.ErlConnect, fd: c_int) !ErlConnect {
         // long winded way of creating a copy of the nodename string
@@ -43,19 +40,21 @@ pub const ErlConnect = struct {
 
         // buffer for storing terms
         var x = std.mem.zeroes(c.ei_x_buff);
-        errdefer {_ = c.ei_x_free(&x);}
+        errdefer {
+            _ = c.ei_x_free(&x);
+        }
 
         // initialize the buffer before receiving
         _ = c.ei_x_new(&x); // todo: check for out of memory
 
-        return .{.allocator = allocator, .conn = conn, .nodename = nodename, .x = x, .fd = fd};
+        return .{ .allocator = allocator, .conn = conn, .nodename = nodename, .x = x, .fd = fd };
     }
 
     pub fn deinit(self: *ErlConnect) void {
-      _ = c.ei_close_connection(self.fd);
-      _ = c.ei_x_free(&self.x);
-      self.allocator.destroy(self.conn);
-      self.allocator.free(self.nodename);
+        _ = c.ei_close_connection(self.fd);
+        _ = c.ei_x_free(&self.x);
+        self.allocator.destroy(self.conn);
+        self.allocator.free(self.nodename);
     }
 
     pub fn receive(self: *ErlConnect, timeout: usize) !Receive {

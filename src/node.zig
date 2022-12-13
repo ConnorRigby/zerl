@@ -56,9 +56,7 @@ pub const Node = struct {
         var processes = std.StringHashMap(Process).init(allocator);
         errdefer processes.deinit();
 
-        return .{ .allocator = allocator, 
-        .processes = processes,
-        .creation = creation, .ec = ec, .addr = addr, .nodename = thisnodename, .port = null, .listen_fd = null, .publish = null };
+        return .{ .allocator = allocator, .processes = processes, .creation = creation, .ec = ec, .addr = addr, .nodename = thisnodename, .port = null, .listen_fd = null, .publish = null };
     }
 
     pub fn deinit(self: *Node) void {
@@ -88,13 +86,13 @@ pub const Node = struct {
         var impl = try self.allocator.create(NetKernel);
         errdefer self.allocator.destroy(impl);
 
-        server.impl = .{.ptr = impl, .handle_castFn = &NetKernel.handle_cast, .handle_callFn = &NetKernel.handle_call};
+        server.impl = .{ .ptr = impl, .handle_castFn = &NetKernel.handle_cast, .handle_callFn = &NetKernel.handle_call };
         server.node = self;
 
-        try self.processes.put("net_kernel", Process.init(.{.ptr = server, .receiveFn = &GenServer.receive}));
+        try self.processes.put("net_kernel", Process.init(.{ .ptr = server, .receiveFn = &GenServer.receive }));
     }
 
-    // Open a listen socket. Non blocking. 
+    // Open a listen socket. Non blocking.
     pub fn listen(self: *Node) !void {
         var port: c_int = undefined;
         const listen_fd = c.ei_xlisten(&self.ec, &self.addr, &port, 10);
@@ -122,7 +120,9 @@ pub const Node = struct {
         conn.* = std.mem.zeroes(c.ErlConnect);
 
         const accept_fd = c.ei_accept_tmo(&self.ec, self.listen_fd.?, conn, timeout);
-        errdefer if (accept_fd > 0) {_ = c.ei_close_connection(accept_fd);};
+        errdefer if (accept_fd > 0) {
+            _ = c.ei_close_connection(accept_fd);
+        };
 
         if (accept_fd < 0) return ErlError.ei_accept;
         return ErlConnect.init(self.allocator, conn, accept_fd);
@@ -135,24 +135,24 @@ pub const Node = struct {
     // the entire thing could be on the `conn` struct.
     pub fn close(self: *Node, conn: *ErlConnect) void {
         _ = self;
-      conn.deinit();
+        conn.deinit();
     }
 
     // process an incoming message from another connection
     pub fn handle_message(self: *Node, conn: *ErlConnect, receive: *ErlConnectReceive) !void {
-        switch(receive.message.message_type) {
+        switch (receive.message.message_type) {
             .RegSend => reg_send(self, conn, receive),
             else => |t| {
                 std.debug.print("unhandled message: {any}\n", .{t});
                 @panic("unhandled message");
-            }
+            },
         }
     }
 
     // handle .RegSend
     fn reg_send(self: *Node, conn: *ErlConnect, receive: *ErlConnectReceive) void {
         const name = receive.message.toname;
-        if(self.processes.get(name)) | process | {
+        if (self.processes.get(name)) |process| {
             process.receive(conn, &receive.message.msg.from, &receive.term.value);
         } else {
             std.debug.print("failed to find process by name {s}\n", .{name});

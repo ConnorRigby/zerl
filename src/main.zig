@@ -9,28 +9,28 @@ const ErlError = @import("erl_error.zig").ErlError;
 // 1) accept
 // 2) for every connection - receive message
 // These could be threaded on paper, but i'm unsure if the
-// erlang interface allows it. 
+// erlang interface allows it.
 pub fn main() !void {
-    try EI.init(); 
+    try EI.init();
 
     // TODO: Node should allow for `hidden` names
     var node = try Node.init("127.0.0.1", "zig", "zig@127.0.0.1", "SECRET_COOKIE", 0, std.heap.page_allocator);
     defer node.deinit();
 
     try node.listen();
-    std.log.info("Node up {s} at {?d}", .{ node.nodename, node.port});
+    std.log.info("Node up {s} at {?d}", .{ node.nodename, node.port });
     try node.register_process();
 
     std.log.info("Awaiting connection", .{});
     while (true) node_accepted: {
-            // wait up to 5 seconds for a new connection.
-            // return a `ei_accept` error message on timeout
-            // Technically, there should be a
-            // thread to run "accept", which itself
-            // should probably spawn one thread per connection.
-            // It's unclear weather the EI library
-            // is threadsafe in this model
-            var conn = node.accept(5000) catch |err| {
+        // wait up to 5 seconds for a new connection.
+        // return a `ei_accept` error message on timeout
+        // Technically, there should be a
+        // thread to run "accept", which itself
+        // should probably spawn one thread per connection.
+        // It's unclear weather the EI library
+        // is threadsafe in this model
+        var conn = node.accept(5000) catch |err| {
             switch (err) {
                 ErlError.ei_accept => continue,
                 else => |e| return e,
@@ -44,7 +44,7 @@ pub fn main() !void {
         std.log.info("Node connection: {s}", .{conn.nodename});
 
         // TODO: each node should register a few global names.
-        // 1) :net_kerrnel - handles internal network ping messages 
+        // 1) :net_kerrnel - handles internal network ping messages
         // 2) :rex - for RPC handling
         while (true) {
             // wait up to 100 ms for a new message. Even if there
@@ -238,26 +238,10 @@ test "decode simple_tuple_with_atoms" {
 
     var term = try EI.Term.init(std.testing.allocator, &x);
     defer term.deinit();
-    std.debug.print("0={s},1={s},2={s}\n", .{
-        term.value.tuple[0].atom,
-        term.value.tuple[1].atom,
-        term.value.tuple[2].atom
-    });
-    try std.testing.expectFmt(
-        "a", 
-        "{s}", 
-        .{term.value.tuple[0].atom}
-    );
-    try std.testing.expectFmt(
-        "b", 
-        "{s}", 
-        .{term.value.tuple[1].atom}
-    );
-    try std.testing.expectFmt(
-        "c", 
-        "{s}", 
-        .{term.value.tuple[2].atom}
-    );
+    std.debug.print("0={s},1={s},2={s}\n", .{ term.value.tuple[0].atom, term.value.tuple[1].atom, term.value.tuple[2].atom });
+    try std.testing.expectFmt("a", "{s}", .{term.value.tuple[0].atom});
+    try std.testing.expectFmt("b", "{s}", .{term.value.tuple[1].atom});
+    try std.testing.expectFmt("c", "{s}", .{term.value.tuple[2].atom});
 }
 
 const simple_tuple_with_strings_and_atoms = @embedFile("term_fixtures/simple_tuple_with_strings_and_atoms.term");
@@ -275,16 +259,8 @@ test "decode simple_tuple_with_strings_and_atoms" {
 
     var term = try EI.Term.init(std.testing.allocator, &x);
     defer term.deinit();
-    try std.testing.expectFmt(
-        "hello", 
-        "{s}", 
-        .{term.value.tuple[0].string}
-    );
-    try std.testing.expectFmt(
-        "world", 
-        "{s}", 
-        .{term.value.tuple[1].atom}
-    );
+    try std.testing.expectFmt("hello", "{s}", .{term.value.tuple[0].string});
+    try std.testing.expectFmt("world", "{s}", .{term.value.tuple[1].atom});
 }
 
 const simple_tuple_with_strings_and_binaries = @embedFile("term_fixtures/simple_tuple_with_strings_and_binaries.term");
@@ -302,16 +278,8 @@ test "decode simple_tuple_with_strings_and_binaries" {
 
     var term = try EI.Term.init(std.testing.allocator, &x);
     defer term.deinit();
-    try std.testing.expectFmt(
-        "hello", 
-        "{s}", 
-        .{term.value.tuple[0].string}
-    );
-    try std.testing.expectFmt(
-        "world", 
-        "{s}", 
-        .{term.value.tuple[1].binary}
-    );
+    try std.testing.expectFmt("hello", "{s}", .{term.value.tuple[0].string});
+    try std.testing.expectFmt("world", "{s}", .{term.value.tuple[1].binary});
 }
 
 const map1 = @embedFile("term_fixtures/map1.term");
@@ -330,7 +298,7 @@ test "decode map1" {
     var term = try EI.Term.init(std.testing.allocator, &x);
     defer term.deinit();
 
-    var value = term.value.map.get(EI.TermValue{.atom = &[_]u8{'a'}});
+    var value = term.value.map.get(EI.TermValue{ .atom = &[_]u8{'a'} });
     try std.testing.expectFmt("b", "{s}", .{value.?.atom});
 }
 
@@ -349,7 +317,7 @@ test "decode map2" {
 
     var term = try EI.Term.init(std.testing.allocator, &x);
     defer term.deinit();
-    var value = term.value.map.get(EI.TermValue{.atom = &[_]u8{'a'}});
+    var value = term.value.map.get(EI.TermValue{ .atom = &[_]u8{'a'} });
     try std.testing.expectFmt("hello, world", "{s}", .{value.?.string});
 }
 const map3 = @embedFile("term_fixtures/map3.term");
@@ -367,7 +335,7 @@ test "decode map3" {
 
     var term = try EI.Term.init(std.testing.allocator, &x);
     defer term.deinit();
-    var value = term.value.map.get(EI.TermValue{.atom = &[_]u8{'a'}});
+    var value = term.value.map.get(EI.TermValue{ .atom = &[_]u8{'a'} });
     try std.testing.expectFmt("hello, world", "{s}", .{value.?.binary});
 }
 
@@ -386,7 +354,7 @@ test "decode map4" {
 
     var term = try EI.Term.init(std.testing.allocator, &x);
     defer term.deinit();
-    var value = term.value.map.get(EI.TermValue{.atom = &[_]u8{'a'}});
+    var value = term.value.map.get(EI.TermValue{ .atom = &[_]u8{'a'} });
     try std.testing.expect(value.?.integer == 100);
 }
 
@@ -405,10 +373,10 @@ test "decode map5" {
 
     var term = try EI.Term.init(std.testing.allocator, &x);
     defer term.deinit();
-    var value = term.value.map.get(EI.TermValue{.atom = &[_]u8{'a'}});
+    var value = term.value.map.get(EI.TermValue{ .atom = &[_]u8{'a'} });
     try std.testing.expect(value.?.integer == 100);
 
-    value = term.value.map.get(EI.TermValue{.atom = &[_]u8{'b'}});
+    value = term.value.map.get(EI.TermValue{ .atom = &[_]u8{'b'} });
     try std.testing.expectFmt("hello, world", "{s}", .{value.?.binary});
 }
 
@@ -468,10 +436,10 @@ test "decode list3" {
     defer term.deinit();
     // [%{a: :b}, %{c: :d}]
 
-    var map_1_value = term.value.list.items[0].map.get(EI.TermValue{.atom = &[_]u8{'a'}});
+    var map_1_value = term.value.list.items[0].map.get(EI.TermValue{ .atom = &[_]u8{'a'} });
     try std.testing.expectFmt("b", "{s}", .{map_1_value.?.atom});
 
-    var map_2_value = term.value.list.items[1].map.get(EI.TermValue{.atom = &[_]u8{'c'}});
+    var map_2_value = term.value.list.items[1].map.get(EI.TermValue{ .atom = &[_]u8{'c'} });
     try std.testing.expectFmt("d", "{s}", .{map_2_value.?.atom});
 }
 
